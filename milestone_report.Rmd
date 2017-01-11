@@ -1,0 +1,403 @@
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(cache=TRUE)
+```
+
+---
+title: 'Exploratory Analysis: SwiftKey'
+author: "Benjamin S. Knight"
+date: "September 6th, 2016"
+output: html_document
+---
+
+## Overview
+Here I document my exploratory analysis of the datasets provided in the tenth and final course within Coursera's Data Science specialization created in conjunction with John Hopkins University. The code used in this analysis can 
+be found here: https://github.com/b-knight/Natural-Language-Processing-with-SwiftKey
+
+As we move forward with this natural language processing project, it is helpful to recall that an n-gram is a contiguous sequence of n items from a given sequence of text or speech. In this instance, words are our unit of analysis. Accordingly, a unigram would be a single word, a bigram would be two adjacent words, a trigram would be a set of three adjacent words, and so forth.
+
+In the following exploratory analysis, I acquire the SwiftKey data and derive the following summary statistics from the data. 
+
+1. File size
+2. Number of lines (i.e. distinct blog posts, tweets, etc. )
+3. Number of unique unigrams, bigrams, and trigrams 
+4. Mean, median, minimum, maximum, and standard deviation of ngram frequencies.
+5. Histograms of the trigram frequencies
+ 
+## Data Acquisition
+Our first step is to acquire the necessary data from SwiftKey. A ZIP file with the SwiftKey corpor can be downloaded here:\
+https://d396qusza40orc.cloudfront.net/dsscapstone/dataset/Coursera-SwiftKey.zip
+
+The zip file contains sample data taken from blogs, twitter, and news. These files are available in English, French, German, and Russian. For this project I utilize the English version which can be found in the folder "en_US."
+
+## Exploratory Analysis
+We begin by assessing the size of the data and the number of observations. This lets us know the amount of computing resources we will likley need going forward, as well as how much data we can comfortably allocate to the training data set.  
+
+```{r, file_size}
+setwd(paste("/Users/benjaminknight/Documents",
+            "/Personal Training/Coursera",
+            "/Data Science 10 - Capstone Project",
+            "/Original Data/en_US", sep=""))
+blog_corpus_size <- round(file.size("en_US.blogs.txt")/1000000, 2)
+news_corpus_size <- round(file.size("en_US.news.txt")/1000000, 2)
+twitter_corpus_size <- round(file.size("en_US.twitter.txt")/1000000, 2)
+```
+
+
+```{r, line_length, eval=FALSE}
+setwd(paste("/Users/benjaminknight/Documents",
+            "/Personal Training/Coursera",
+            "/Data Science 10 - Capstone Project",
+            "/Original Data/en_US", sep=""))
+blog_file_length <- length(readLines("en_US.blogs.txt"))
+news_file_lentgh <- length(readLines("en_US.news.txt"))
+twitter_file_length <- length(readLines("en_US.twitter.txt"))
+```
+
+
+#### File Size
+
++---------+-----------+-----------------+
+| Corpus  | File Size | Number of Lines | 
++=========+===========+=================+
+| Blogs   | 210.16 MB | 899,288         |               
++---------+-----------+-----------------+
+| News    | 205.81 MB | 1,010,242       |                
++---------+-----------+-----------------+
+| Twitter | 167.11 MB | 2,360,148       |                
++---------+-----------+-----------------+
+
+#### Unigram Derivation
+
+The primary prerequisite of any further exploratory analysis is the derivation of ngrams. Instead of sampling, I utilize all of the available data. However, to avoid performance issues, I break the datasets into 10 subsets, derive ngrams, then aggregate. Here I break the initial dataset into 10 subsets using the Twitter dataset as an example.
+
+```{r, susetting, eval=FALSE}
+lines <- readlines("en_US.twitter.txt")
+delimiter <- round(length(lines)/10, 0)
+subset_1 <- paste(rbind(lines[1:delimiter]), collapse = " ")
+subset_2 <- paste(rbind(lines[(delimiter+1):(delimiter*2)]), collapse = " ")
+subset_3 <- paste(rbind(lines[((delimiter*2)+1):(delimiter*3)]), collapse = " ")
+subset_4 <- paste(rbind(lines[((delimiter*3)+1):(delimiter*4)]), collapse = " ")
+subset_5 <- paste(rbind(lines[((delimiter*4)+1):(delimiter*5)]), collapse = " ")
+subset_6 <- paste(rbind(lines[((delimiter*5)+1):(delimiter*6)]), collapse = " ")
+subset_7 <- paste(rbind(lines[((delimiter*6)+1):(delimiter*7)]), collapse = " ")
+subset_8 <- paste(rbind(lines[((delimiter*7)+1):(delimiter*8)]), collapse = " ")
+subset_9 <- paste(rbind(lines[((delimiter*8)+1):(delimiter*9)]), collapse = " ")
+subset_10 <- paste(rbind(lines[((delimiter*9)+1):length(lines)]), collapse = " ")
+
+subsets <- list(subset_1, subset_2, subset_3, subset_4, subset_5, 
+                subset_6, subset_7, subset_8, subset_9, subset_10)
+```
+
+Next, I preprocess the subsets. I start with R's base package command "gsub"
+to extract characters that are irrelevant to ngram construction.
+
+```{r, pre-processing_1, eval=FALSE}
+subsets <- lapply(subsets,  # strip out non-relevant characters
+           function(x)      # prior to ngram construction
+           {gsub(
+           "\\w['-]\\w)|[[:punct:]]|_|,|\\*|;|\\=|\\^|\\+|\\]|\\[|>|<|\\}|
+           ([[:alnum:]][-][[:alnum:]])|\\{|\\$|#|@|\\~|%|:|\\)|\\(|\"|\\|:|/", 
+           '', x)})
+```
+
+Next, I pre-condition the subsets using the ngram's preprocessing function. This preprocessing adjusts white space, eliminates capitalization, and removes numeric characters. 
+
+```{r, pre-processing_2, eval=FALSE}
+library(ngram) 
+subsets <- lapply(subsets,          # preprocess the subsets for 
+           function(x)              # conversion into ngrams
+           {preprocess(x, 
+           case = "lower", 
+           remove.punct = FALSE,
+           remove.numbers = TRUE, 
+           fix.spacing = TRUE)})
+```
+
+Finally, we are ready to create the ngrams. Unigrams are the easiest to create. I start with using lappy function to generate unigrams for the 10 subsets and union the results.
+
+```{r, unigrams, eval=FALSE}
+raw_unigrams <- lapply(subsets,     # convert the subsets into unigrams
+                function(x)
+                {ngram(x, n = 1, sep = " ")})
+
+library(data.table)
+l = list(data.table(get.phrasetable(raw_unigrams[[1]])),
+         data.table(get.phrasetable(raw_unigrams[[2]])),
+         data.table(get.phrasetable(raw_unigrams[[3]])),
+         data.table(get.phrasetable(raw_unigrams[[4]])),
+         data.table(get.phrasetable(raw_unigrams[[5]])),
+         data.table(get.phrasetable(raw_unigrams[[6]])),
+         data.table(get.phrasetable(raw_unigrams[[7]])),
+         data.table(get.phrasetable(raw_unigrams[[8]])),
+         data.table(get.phrasetable(raw_unigrams[[9]])),
+         data.table(get.phrasetable(raw_unigrams[[10]])))
+unigrams <- rbindlist(l)
+rm(l, raw_unigrams)
+```
+
+We have our unigrams, but many of these unigrams are meaningless due to fat fingering, misspelling, etc. Here I use the English Wordlists by SIL International to scrub the unigram data object of invalid unigrams. First I 
+download the dataset of formal English words.
+
+```{r, valid_words, eval=FALSE}
+valid_words <- data.table(
+fread(
+'http://www-01.sil.org/linguistics/wordlists/english/wordlist/wordsEn.txt',
+header = FALSE))
+valid_words <- rename(valid_words, c("V1"="word"))
+```
+
+Then I drop the incorrect column of unigram frequencies and re-aggregate.
+
+```{r, unigram_reaggregation, eval=FALSE}
+unigrams <- subset(unigrams, select=-c(prop))
+unigrams <- aggregate(unigrams$freq, by=list(unigrams$ngrams), FUN=sum)
+```
+
+Subsequently, I trim any white space that was inadvertantly introduced
+and drop unigrams that are not included in the English Wordlists by SIL International.
+
+```{r, drop_invalid_unigrams, eval=FALSE}
+library(stringr)
+unigrams$Group.1 <- str_trim(unigrams$Group.1) 
+unigrams <- unigrams[unigrams$Group.1 %in% valid_words$word,]
+```
+
+Lastly, I re-derive the frequency statistics for the remaining unigrams and relabel the fields to be more intuitive. 
+
+```{r, frequency_rederivation, eval=FALSE}
+unigrams$freq <- unigrams$x / sum(unigrams$x)
+unigrams <- rename(unigrams, c("Group.1"="ngram", "x"="count"))
+```
+
+Given the long computation times, I would advise saving the output to
+your local machine.
+
+#### Bigram Derivation
+
+Initially, deriving the bigrams seems similiar to how we derived the unigrams.
+
+```{r, create_bigrams, eval=FALSE}
+raw_bigrams <- lapply(subsets,          
+               function(x)
+               {ngram(x, n = 2, sep = " ")})
+```
+
+However, bigrams are intrinsically more difficult to sanitize given their additional complexity. By 'sanitize,' I refer to dropping bigrams with components that are not included in the English Wordlists by SIL International.
+To this end, I created a bigram parser function.
+
+```{r, bigram_parser_function, eval=FALSE}
+bigram_parser <-  function(x, words) {
+                  require(stringr)
+                  x$A <- word(x$ngram, 1);
+                  x$B <- word(x$ngram, 2);
+                  x <- x[which(x$A %in% unlist(words) 
+                             & x$B %in% unlist(words)), ]
+                  x <- subset(x, select=-c(prop, A, B))
+                  return(data.table(x))
+}
+```
+
+This function takes 2 inputs: a data object of bigrams and a list of permissable words. The function drops bigrams from the data object if either of the two components do not fall within the permissable words specified in the list.
+
+I apply this function to all subsets and union the results.
+
+```{r, union_sanitized_bigrams, eval=FALSE}
+bigram1  <- bigram_parser(data.table(
+            get.phrasetable(raw_bigrams[[1]])), valid_words)
+bigram2  <- bigram_parser(data.table(
+            get.phrasetable(raw_bigrams[[2]])), valid_words)
+bigram3  <- bigram_parser(data.table(
+            get.phrasetable(raw_bigrams[[3]])), valid_words)
+bigram4  <- bigram_parser(data.table(
+            get.phrasetable(raw_bigrams[[4]])), valid_words)
+bigram5  <- bigram_parser(data.table(
+            get.phrasetable(raw_bigrams[[5]])), valid_words)
+bigram6  <- bigram_parser(data.table(
+            get.phrasetable(raw_bigrams[[6]])), valid_words)
+bigram7  <- bigram_parser(data.table(
+            get.phrasetable(raw_bigrams[[7]])), valid_words)
+bigram8  <- bigram_parser(data.table(
+            get.phrasetable(raw_bigrams[[8]])), valid_words)
+bigram9  <- bigram_parser(data.table(
+            get.phrasetable(raw_bigrams[[9]])), valid_words)
+bigram10 <- bigram_parser(data.table(
+            get.phrasetable(raw_bigrams[[10]])), valid_words)
+
+l = list(bigram1, bigram2, bigram3, bigram4, bigram5,
+         bigram6, bigram7, bigram8, bigram9, bigram10)
+bigrams <- rbindlist(l)
+```
+
+As was the case with the unigrams, we have duplicte bigrams as a consequence
+of the subsetting. The following code elements the duplicates and re-derives the frequency statistics.
+
+```{r, bigram_reaggregation, eval=FALSE}
+bigrams <- aggregate(bigrams$freq, by=list(bigrams$ngrams), FUN=sum)
+bigrams$freq <- bigrams$x / sum(bigrams$x)
+bigrams <- rename(bigrams, c("Group.1"="ngram", "x"="count"))
+```
+
+#### Trigram Derivation
+
+Deriving the trigrams is very similiar to the manner by which we
+derived the bigrams - the key difference is that I've updated the bigram parser function into a trigram parser function. The only difference is the addition of the 'C' column by which the third word within the trigram is validated by comparison to the wordlists by SIL International.
+
+```{r, trigram_parser_function, eval=FALSE}
+trigram_parser <-  function(x, words) {
+                   require(stringr)
+                   x$A <- word(x$ngram, 1);
+                   x$B <- word(x$ngram, 2);
+                   x$C <- word(x$ngram, 3);
+                   x <- x[which(x$A %in% unlist(words) 
+                   & x$B %in% unlist(words)
+                   & x$C %in% unlist(words)), ]
+                   x <- subset(x, select=-c(prop, A, B, C))
+                   return(data.table(x))
+}
+```
+
+#### Ngram Statistics
+
+Here are the results from the ngram derivation.
+
++---------+-----------------+----------------+-----------------+
+| Corpus  | Unique Unigrams | Unique Bigrams | Unique Trigrams |
++=========+=================+================+=================+
+| Blogs   | 69,923          | 4,806,573      | 15,955,520      |          
++---------+-----------------+----------------+-----------------+
+| News    | 61,801          | 4,473,184      | 14,605,114      |     
++---------+-----------------+----------------+-----------------+
+| Twitter | 56,041          | 3,494,729      | 10,628,766      |    
++---------+-----------------+----------------+-----------------+
+
+And here are histograms of the distribution of the trigram frequencies. To increase interpretability, I have subset the trigram data sets to only include trigrams with at least 1000 occurences within the corpus. 
+
+```{r, ngram_reporting, cache=TRUE, echo=FALSE}
+library(data.table)
+setwd("/Users/benjaminknight/Documents/Personal\ Training/Coursera/Data\ Science\ 10\ -\ Capstone\ Project/ngrams/en_US.blogs")
+blog_trigrams <- fread("trigrams.csv")
+blog_trigram_hist <- blog_trigrams[which(blog_trigrams$count >= 1000), ]
+hist(blog_trigram_hist$freq, main = "Histogram of Blog Trigram Frequencies")
+
+setwd("/Users/benjaminknight/Documents/Personal\ Training/Coursera/Data\ Science\ 10\ -\ Capstone\ Project/ngrams/en_US.news")
+news_trigrams <- fread("trigrams.csv")
+news_trigram_hist <- news_trigrams[which(news_trigrams$count >= 1000), ]
+hist(news_trigram_hist$freq, main = "Histogram of News Trigram Frequencies")
+
+setwd("/Users/benjaminknight/Documents/Personal\ Training/Coursera/Data\ Science\ 10\ -\ Capstone\ Project/ngrams/en_US.twitter")
+twitter_trigrams <- fread("trigrams.csv")
+twitter_trigram_hist <- twitter_trigrams[which(twitter_trigrams$count >= 1000), ]
+hist(twitter_trigram_hist$freq, main = "Histogram of Twitter Trigram Frequencies")
+```
+
+Lastly, here are the summary statistics for the unigram, bigram, and trigram frequencies broken out by corpus.
+
+```{r, freq_summary_stats, eval=FALSE, echo=FALSE}
+library(data.table)
+setwd("/Users/benjaminknight/Documents/Personal\ Training/Coursera/Data\ Science\ 10\ -\ Capstone\ Project/ngrams/en_US.blogs")
+blog_unigrams <- fread("unigrams.csv")
+mean_blog_freq <- mean(blog_unigrams$freq)
+median_blog_freq <- median(blog_unigrams$freq)
+min_blog_freq <- min(blog_unigrams$freq)
+max_blog_freq <- max(blog_unigrams$freq)
+sd_blog_freq <- sd(blog_unigrams$freq)
+blog_bigrams <- fread("bigrams.csv")
+mean_blog_freq <- mean(blog_bigrams$freq)
+median_blog_freq <- median(blog_bigrams$freq)
+min_blog_freq <- min(blog_bigrams$freq)
+max_blog_freq <- max(blog_bigrams$freq)
+sd_blog_freq <- sd(blog_bigrams$freq)
+blog_trigrams <- fread("trigrams.csv")
+mean_blog_freq <- mean(blog_trigrams$freq)
+median_blog_freq <- median(blog_trigrams$freq)
+min_blog_freq <- min(blog_trigrams$freq)
+max_blog_freq <- max(blog_trigrams$freq)
+sd_blog_freq <- sd(blog_trigrams$freq)
+setwd("/Users/benjaminknight/Documents/Personal\ Training/Coursera/Data\ Science\ 10\ -\ Capstone\ Project/ngrams/en_US.news")
+news_unigrams <- fread("unigrams.csv")
+mean_news_freq <- mean(news_unigrams$freq)
+median_news_freq <- median(news_unigrams$freq)
+min_news_freq <- min(news_unigrams$freq)
+max_news_freq <- max(news_unigrams$freq)
+sd_news_freq <- sd(news_unigrams$freq)
+news_bigrams <- fread("bigrams.csv")
+mean_news_freq <- mean(news_bigrams$freq)
+median_news_freq <- median(news_bigrams$freq)
+min_news_freq <- min(news_bigrams$freq)
+max_news_freq <- max(news_bigrams$freq)
+sd_news_freq <- sd(news_bigrams$freq)
+news_trigrams <- fread("trigrams.csv")
+mean_news_freq <- mean(news_trigrams$freq)
+median_news_freq <- median(news_trigrams$freq)
+min_news_freq <- min(news_trigrams$freq)
+max_news_freq <- max(news_trigrams$freq)
+sd_news_freq <- sd(news_trigrams$freq)
+setwd("/Users/benjaminknight/Documents/Personal\ Training/Coursera/Data\ Science\ 10\ -\ Capstone\ Project/ngrams/en_US.twitter")
+twitter_unigrams <- fread("unigrams.csv")
+mean_twitter_freq <- mean(twitter_unigrams$freq)
+median_twitter_freq <- median(twitter_unigrams$freq)
+min_twitter_freq <- min(twitter_unigrams$freq)
+max_twitter_freq <- max(twitter_unigrams$freq)
+sd_twitter_freq <- sd(twitter_unigrams$freq)
+twitter_bigrams <- fread("bigrams.csv")
+mean_twitter_freq <- mean(twitter_bigrams$freq)
+median_twitter_freq <- median(twitter_bigrams$freq)
+min_twitter_freq <- min(twitter_bigrams$freq)
+max_twitter_freq <- max(twitter_bigrams$freq)
+sd_twitter_freq <- sd(twitter_bigrams$freq)
+twitter_trigrams <- fread("trigrams.csv")
+mean_twitter_freq <- mean(twitter_trigrams$freq)
+median_twitter_freq <- median(twitter_trigrams$freq)
+min_twitter_freq <- min(twitter_trigrams$freq)
+max_twitter_freq <- max(twitter_trigrams$freq)
+sd_twitter_freq <- sd(twitter_trigrams$freq)
+```
+
++---------+-----------+-----------+-----------+-----------+-----------+
+| Unigram | Mean      | Median    | Minimum   | Maximum   | S.D.      | 
++=========+===========+===========+===========+===========+===========+
+| Blogs   | 1.430e-05 | 4.971e-08 | 2.908e-08 | 0.0539825 | 0.0003452 |
++---------+-----------+-----------+-----------+-----------+-----------+
+| News    | 1.618e-05 | 4.813e-07 | 3.208e-08 | 0.0632349 | 0.0003790 |         
++---------+-----------+-----------+-----------+-----------+-----------+
+| Twitter | 1.784e-05 | 3.493e-07 | 3.881e-08 | 0.0362600 | 0.0003289 |  
++---------+-----------+-----------+-----------+-----------+-----------+
+
++---------+-----------+-----------+-----------+-----------+-----------+
+| Bigram  | Mean      | Median    | Minimum   | Maximum   | S.D.      | 
++=========+===========+===========+===========+===========+===========+
+| Blogs   | 2.080e-07 | 3.654e-08 | 3.654e-08 | 0.0005327 | 5.679e-06 |
++---------+-----------+-----------+-----------+-----------+-----------+
+| News    | 2.235e-07 | 3.427e-08 | 3.427e-08 | 0.0064045 | 6.164e-06 |
++---------+-----------+-----------+-----------+-----------+-----------+
+| Twitter | 2.861e-07 | 4.396e-08 | 4.396e-08 | 0.0034455 | 6.127e-06 |   
++---------+-----------+-----------+-----------+-----------+-----------+
+
++---------+-----------+-----------+-----------+-----------+-----------+
+| Trigram | Mean      | Median    | Minimum   | Maximum   | S.D.      | 
++=========+===========+===========+===========+===========+===========+
+| Blogs   | 6.267e-08 | 3.311e-08 | 3.311e-08 | 0.0004774 | 4.701e-07 |
++---------+-----------+-----------+-----------+-----------+-----------+
+| News    | 6.846917e | 3.654e-08 | 3.654e-08 | 0.0005327 | 4.665e-07 |
++---------+-----------+-----------+-----------+-----------+-----------+
+| Twitter | 9.408e-08 | 4.971e-08 | 4.971e-08 | 0.0011699 | 7.934e-07 |   
++---------+-----------+-----------+-----------+-----------+-----------+
+
+## Initial Findings and Next Steps
+
+In terms of unique unigrams (i.e. words), the blog corpus has the largest number (69,923) compared to the news corpus (61,801) followed by the Twitter corpus (56,041). As a reminder, these only include correctly spelled words that are part of the English Wordlists by SIL International. 
+
+These results are not surprising, as the rank ordering of total distinct unigrams matches the rank ordering of the corpus sizes as measured in megabytes. It is also worth bearing in mind that while the absolute amount of information for these three corpuses goes Blogs -> News -> Twitter in order of largest to smallest, the order is reversed when when take into account the number of observations. Thus, the Twitter corpus as the most lines (2,360,148) followed by the news corpus at amount half that amount (1,010,242 lines) with the blog corpus having the fewest number of lines 899,288.
+
+Thus, right off the bat we can see how these three corpuses vary in the depth  versus breadth of their information. What will be of greatest use to us in deriving a word prediction algorithm - many shorter samples from more people, or fewer, longer samples from a more narrowly drawn sample of the population? Examining the frequency distributions of the ngrams sheds some light on this. 
+
+Each addition to the unigram - from unigram to bigram and from bigram to trigram - increases the universe of possible outcomes by an order of magnitude or more (e.g. 69,923 blog unigrams versus 4,806,573 valid blog bigrams). This is after a fairly conservative sanitizing of the corpus (more permissive data cleaning would introduce a far greater number of possible outcomes.)
+
+This being the case, we should not be surpised as the numbers in the tables above shrink rapidly as we progress from unigram to trigram. What IS interesting is that the variation across corpuses becomes more and more obvious with each addition to our ngram.
+
+Trigrams contain the most information and are potentially the most powerful predictors of the three groups. For that reason, I now emphasize them here. Looking at the median frequency of the Twitter trigrams versus the news and blog trigrams, we see that the median Twitter trigram has a frequency of 4.971e-08, or 150% that of the median blog trigram (3.311e-08). 
+
+This high level of frequency is good news. The more repetition, the less hard our prediction algorithm has to work. This is good news because even though Twitter has the smallest corpus, there are still over 10 million distinct trigrams and so we can very quickly become computationally constrained. In addition the data set of Twitter trigrams has the largest standard deviation (7.934e-07). These summary statistics for the Twitter trigrams suggest the existence of outlier trigrams - trigrams of so little frequency as to be near useless. In other words, in the event that we have to drop trigrams from the algorithm due to performance constraints, we can probably make use of only a subset of the Twitter trigrams without too great a degradation in performance. 
+
+Going forward, the next steps come into focus. Ultimately, the RShiny app can take a word as an input, subset the trigram database for allowable options, and rank those options by frequency. The addition of a second word will allow a second round of subsetting and greater precision. We can continue this sequence with 4-grams, 5-grams etc. until we hit hard computational constraints.   
+
